@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:Spinner"
         mc:Ignorable="d"
         Loaded="Window_Loaded"
-        Background="White"
+        Background="#FF1E1E1E"
         Title="MainWindow"   Height="350" Width="525"
        
         WindowStartupLocation="CenterScreen">
@@ -16,26 +16,30 @@
         <LinearGradientBrush x:Key="SnakeStrokeBrush"
                          StartPoint="0,0" EndPoint="1,0"
                          MappingMode="RelativeToBoundingBox">
-            <!-- Kenarlarda en koyu mavi (yine de yakın ton) -->
-            <GradientStop Color="#00B0FF" Offset="0.0"/>
+            <!-- Kenarlar: ortaya daha yakın (daha açık) -->
+            <GradientStop Color="#00C4FF" Offset="0.0"/>
 
-            <!-- Ortaya doğru orta ton mavi -->
-            <GradientStop Color="#00B8FF" Offset="0.25"/>
+            <!-- Ortaya yaklaşırken: iyice yaklaşmış açık mavi -->
+            <GradientStop Color="#00D8FF" Offset="0.25"/>
 
-            <!-- ORTA HER ZAMAN EN AÇIK: #00E5FF -->
-            <GradientStop Color="#00E5FF" Offset="0.45"/>
-            <GradientStop Color="#00E5FF" Offset="0.55"/>
+            <!-- ORTAYA YAKIN GLOW -->
+            <GradientStop Color="#40F0FF" Offset="0.40"/>
 
-            <!-- Ortadan uzaklaşırken tekrar orta ton -->
-            <GradientStop Color="#00B8FF" Offset="0.75"/>
+            <!-- TAM FOSFORLU MERKEZ -->
+            <GradientStop Color="#80FAFF" Offset="0.50"/>
 
-            <!-- Sağ uç: yine en koyu mavi (ama yakın ton) -->
-            <GradientStop Color="#00B0FF" Offset="1.0"/>
+            <!-- Glow’dan tekrar geri -->
+            <GradientStop Color="#40F0FF" Offset="0.60"/>
+            <GradientStop Color="#00D8FF" Offset="0.75"/>
+
+            <!-- Sağ kenar: yine ortaya yakın -->
+            <GradientStop Color="#00C4FF" Offset="1.0"/>
         </LinearGradientBrush>
     </Window.Resources>
 
 
-    <Grid Background="White">
+
+    <Grid Background="#FF1E1E1E">
         <Canvas x:Name="RootCanvas" Margin="40">
             <!-- Arka border -->
             <Path x:Name="BaseBorderPath"
