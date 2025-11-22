@@ -18,10 +18,14 @@ namespace Spinner
 {
     public partial class MainWindow : Window
     {
-        // Yılan uzunluğu: çevrenin yüzde kaçı
-        private const double SnakeFraction = 0.35;   // 6x / 24x
+        // Yılan uzunluğu: toplam yolun yüzdesi
+        private const double SnakeFraction = 0.45;   // burada boyu ayarlıyorsun
         // Bir tam tur süresi (sn) – hız
-        private const double PeriodSeconds = 6.0;
+        private const double PeriodSeconds = 8.0;
+
+        // Kalınlık ayarları: ortada max, uçlarda min
+        private const double MinThickness = 3;
+        private const double MaxThickness = 5.0;
 
         // Path üzerindeki noktalar (flattened)
         private List<Point> _points = new List<Point>();
@@ -29,7 +33,7 @@ namespace Spinner
         private List<double> _cumLengths = new List<double>();
         private double _totalLength;
 
-        // Animasyon durumu
+        // Animasyon state
         private double _headPos; // [0, _totalLength)
         private TimeSpan _lastRenderTime;
 
@@ -52,20 +56,18 @@ namespace Spinner
             if (w <= 0 || h <= 0)
                 return;
 
-            // İçte yuvarlak köşeli dikdörtgen alanı
+            // Tuvali dolduran yuvarlak köşeli dikdörtgen
             double rectWidth = w;
             double rectHeight = h;
-            double radius = 22; // köşe yumuşaklığı (oynayabilirsin)
+            double radius = 22; // köşe yuvarlaklığı
 
             var rect = new Rect(0, 0, rectWidth, rectHeight);
-
-            // Yuvarlatılmış dikdörtgen geometrisi
             var rectGeom = new RectangleGeometry(rect, radius, radius);
 
-            // Temel border path’i bu geometriyle çiz
+            // Arka border
             BaseBorderPath.Data = rectGeom;
 
-            // Yılan da aynı geometriyi takip edecek
+            // Yılan aynı path’i takip edecek
             BuildFlattenedPath(rectGeom);
         }
 
@@ -103,17 +105,10 @@ namespace Spinner
                         }
                     }
                 }
-
-                // Figure kapalıysa (closed), son nokta başlangıca zaten dönmüş olur.
             }
 
-            // _points: N nokta
-            // _segLengths: N-1 segment
-            // _cumLengths: N-1 cumulative length
             if (_points.Count < 2)
-            {
                 _totalLength = 0;
-            }
         }
 
         private void CompositionTarget_Rendering(object sender, EventArgs e)
@@ -147,40 +142,42 @@ namespace Spinner
 
         private void UpdateSnakePath(double tail, double head)
         {
-            var geom = new PathGeometry();
+            // Yılanın merkez hattı boyunca noktaları topla
+            var centers = new List<Point>();
 
             if (tail <= head)
             {
-                var fig = BuildFigureForRange(tail, head);
-                if (fig != null)
-                    geom.Figures.Add(fig);
+                centers.AddRange(GetPointsForRange(tail, head));
             }
             else
             {
                 // wrap: [tail, total) ve [0, head]
-                var fig1 = BuildFigureForRange(tail, _totalLength);
-                var fig2 = BuildFigureForRange(0, head);
-
-                if (fig1 != null) geom.Figures.Add(fig1);
-                if (fig2 != null) geom.Figures.Add(fig2);
+                centers.AddRange(GetPointsForRange(tail, _totalLength));
+                centers.AddRange(GetPointsForRange(0, head));
             }
 
+            if (centers.Count < 2)
+            {
+                SnakePath.Data = null;
+                return;
+            }
+
+            // Tapered (ortası kalın, uçları ince) şerit poligonunu oluştur
+            var geom = BuildTaperedGeometry(centers);
             SnakePath.Data = geom;
         }
 
-        private PathFigure BuildFigureForRange(double startDist, double endDist)
+        private List<Point> GetPointsForRange(double startDist, double endDist)
         {
+            var pts = new List<Point>();
             if (endDist <= startDist || _points.Count < 2)
-                return null;
+                return pts;
 
-            // start noktası
             var startPoint = PointOnPath(startDist, out int startIndex);
-            // end noktası
             var endPoint = PointOnPath(endDist, out int endIndex);
 
-            var pts = new List<Point> { startPoint };
+            pts.Add(startPoint);
 
-            // Aradaki tam noktalar
             int i = startIndex + 1;
             while (i <= endIndex && i < _points.Count)
             {
@@ -188,40 +185,97 @@ namespace Spinner
                 i++;
             }
 
-            // Eğer endIndex, startIndex ile aynı segmentte ise
             if (pts.Count == 1)
             {
                 pts.Add(endPoint);
             }
             else
             {
-                // Son noktayı endPoint olarak güncelle
                 pts[pts.Count - 1] = endPoint;
+            }
+
+            return pts;
+        }
+
+        private Geometry BuildTaperedGeometry(List<Point> centers)
+        {
+            int n = centers.Count;
+            var leftPts = new List<Point>(n);
+            var rightPts = new List<Point>(n);
+
+            Vector lastDir = new Vector(1, 0);
+
+            for (int i = 0; i < n; i++)
+            {
+                Point p = centers[i];
+
+                Vector dir;
+                if (i == 0)
+                {
+                    dir = centers[1] - centers[0];
+                }
+                else if (i == n - 1)
+                {
+                    dir = centers[n - 1] - centers[n - 2];
+                }
+                else
+                {
+                    Vector d1 = centers[i] - centers[i - 1];
+                    Vector d2 = centers[i + 1] - centers[i];
+                    dir = d1 + d2;
+                }
+
+                if (dir.LengthSquared < 1e-6)
+                    dir = lastDir;
+                else
+                    lastDir = dir;
+
+                dir.Normalize();
+
+                // Normal vektör
+                Vector nrm = new Vector(-dir.Y, dir.X);
+
+                // 0..1 arasında param: 0 = kuyruk, 1 = baş
+                double t = (double)i / (n - 1);
+
+                // Ortası kalın, uçlarda ince: tepe fonksiyonu
+                double s = 1.0 - 2.0 * Math.Abs(t - 0.5); // 0..1..0
+                if (s < 0) s = 0;
+
+                double thickness = MinThickness + (MaxThickness - MinThickness) * s;
+                double half = thickness / 2.0;
+
+                Point left = p + nrm * half;
+                Point right = p - nrm * half;
+
+                leftPts.Add(left);
+                rightPts.Add(right);
             }
 
             var fig = new PathFigure
             {
-                StartPoint = pts[0],
-                IsClosed = false,
-                IsFilled = false
+                StartPoint = leftPts[0],
+                IsClosed = true,
+                IsFilled = true
             };
 
-            if (pts.Count > 1)
-            {
-                var seg = new PolyLineSegment();
-                for (int k = 1; k < pts.Count; k++)
-                    seg.Points.Add(pts[k]);
+            var seg = new PolyLineSegment();
+            // sol taraftan tail -> head
+            for (int i = 1; i < leftPts.Count; i++)
+                seg.Points.Add(leftPts[i]);
+            // sağ taraftan head -> tail (tersten)
+            for (int i = rightPts.Count - 1; i >= 0; i--)
+                seg.Points.Add(rightPts[i]);
 
-                fig.Segments.Add(seg);
-            }
+            fig.Segments.Add(seg);
 
-            return fig;
+            var geom = new PathGeometry();
+            geom.Figures.Add(fig);
+            return geom;
         }
 
         private Point PointOnPath(double dist, out int segIndex)
         {
-            // dist: [0, _totalLength)
-            // segIndex: dist'in düştüğü segment
             for (int i = 0; i < _segLengths.Count; i++)
             {
                 double segStart = (i == 0) ? 0 : _cumLengths[i - 1];
@@ -237,7 +291,6 @@ namespace Spinner
                 }
             }
 
-            // Güvenlik için: son noktayı ver
             segIndex = _segLengths.Count - 1;
             return _points.Last();
         }

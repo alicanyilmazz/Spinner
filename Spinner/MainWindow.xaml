@@ -11,47 +11,47 @@
        
         WindowStartupLocation="CenterScreen">
 
+
     <Window.Resources>
         <LinearGradientBrush x:Key="SnakeStrokeBrush"
                          StartPoint="0,0" EndPoint="1,0"
                          MappingMode="RelativeToBoundingBox">
-            <!-- Uçlar: çok açık mavi / beyazımsı -->
-            <GradientStop Color="#E0F6FF" Offset="0.0"/>
+            <!-- Sol uç: #00B8FF'e çok yakın, biraz daha koyu -->
+          
 
-            <!-- Ortaya yaklaşırken: biraz daha koyu cyan -->
-            <GradientStop Color="#00C5FF" Offset="0.22"/>
+            <!-- Ortaya yaklaşırken: orta ton mavi -->
+            <GradientStop Color="#00B8FF" Offset="0"/>
 
-            <!-- ORTA PARLAK BAND (daha geniş ve belirgin) -->
-            <GradientStop Color="#00E5FF" Offset="0.40"/>
-            <GradientStop Color="#00E5FF" Offset="0.60"/>
+            <GradientStop Color="#00E5FF" Offset="0.15"/>
 
-            <!-- Ortadan uzaklaşırken tekrar biraz koyu cyan -->
-            <GradientStop Color="#00C5FF" Offset="0.78"/>
+            <!-- ORTA PARLAK BAND -->
+            <GradientStop Color="#00E5FF" Offset="0.45"/>
+            <GradientStop Color="#00E5FF" Offset="0.55"/>
 
-            <!-- Sağ uç: tekrar çok açık mavi -->
-            <GradientStop Color="#E0F6FF" Offset="1.0"/>
+            <!-- Ortadan uzaklaşırken tekrar orta ton -->
+
+
+            <!-- Sağ uç: yine çok az daha koyu -->
+            <GradientStop Color="#00E5FF" Offset="0.05"/>
+            <GradientStop Color="#00B8FF" Offset="0.75"/>
         </LinearGradientBrush>
     </Window.Resources>
 
 
-
     <Grid Background="White">
         <Canvas x:Name="RootCanvas" Margin="40">
-            <!-- HER ZAMAN GÖRÜNEN İNCE, YUMUŞAK KÖŞELİ MAVİ ÇERÇEVE -->
+            <!-- Arka border -->
             <Path x:Name="BaseBorderPath"
-                  Stroke="#FF17B2E6"
-                  StrokeThickness="1"
-                  StrokeLineJoin="Round"
-                  Fill="Transparent" />
+      Stroke="#FF17B2E6"
+      StrokeThickness="1"
+      StrokeLineJoin="Round"
+      Fill="Transparent" />
 
-            <!-- YUVARLAK KÖŞELİ YILAN ÇİZGİSİ (MANUEL ÇİZİYORUZ) -->
+            <!-- YUVARLAK KÖŞELİ, ORTASI KALIN UÇLARI İNCE YILAN -->
             <Path x:Name="SnakePath"
-                  Stroke="{StaticResource SnakeStrokeBrush}"
-                  StrokeThickness="4"
-                  StrokeStartLineCap="Round"
-                  StrokeEndLineCap="Round"
-                  StrokeLineJoin="Round"
-                  Fill="Transparent" />
+                  Fill="{StaticResource SnakeStrokeBrush}"
+                  StrokeThickness="0"
+                  StrokeLineJoin="Round" />
         </Canvas>
     </Grid>
 </Window>
