@@ -24,8 +24,8 @@ namespace Spinner
         private const double PeriodSeconds = 8.0;
 
         // Kalınlık ayarları: ortada max, uçlarda min
-        private const double MinThickness = 3;
-        private const double MaxThickness = 5.0;
+        private const double MinThickness = 4.0;
+        private const double MaxThickness = 4.0;
 
         // Path üzerindeki noktalar (flattened)
         private List<Point> _points = new List<Point>();
