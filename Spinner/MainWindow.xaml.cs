@@ -19,9 +19,9 @@ namespace Spinner
     public partial class MainWindow : Window
     {
         // Yılan uzunluğu: çevrenin yüzde kaçı
-        private const double SnakeFraction = 0.25;   // 6x / 24x
+        private const double SnakeFraction = 0.35;   // 6x / 24x
         // Bir tam tur süresi (sn) – hız
-        private const double PeriodSeconds = 10.0;
+        private const double PeriodSeconds = 6.0;
 
         // Path üzerindeki noktalar (flattened)
         private List<Point> _points = new List<Point>();
