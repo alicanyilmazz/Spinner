@@ -12,26 +12,27 @@
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
-        <!-- YILAN GRADIENTİ: uçlar açık, ortada parlak cyan, ortanın yanlarında biraz daha koyu cyan -->
         <LinearGradientBrush x:Key="SnakeStrokeBrush"
                          StartPoint="0,0" EndPoint="1,0"
                          MappingMode="RelativeToBoundingBox">
             <!-- Sol uç: çok açık mavi / beyazımsı -->
             <GradientStop Color="#D0F0FF" Offset="0.0"/>
 
-            <!-- Ortanın yanlarında: #33E9FF'in biraz daha koyusu -->
+            <!-- Ortaya yaklaşırken: biraz daha koyu cyan -->
             <GradientStop Color="#00C5FF" Offset="0.20"/>
 
-            <!-- TAM ORTA: #33E9FF -->
-            <GradientStop Color="#33E9FF" Offset="0.50"/>
+            <!-- ORTA PARLAK BAND (daha belirgin): #00E5FF -->
+            <GradientStop Color="#00E5FF" Offset="0.45"/>
+            <GradientStop Color="#00E5FF" Offset="0.55"/>
 
-            <!-- Sağ tarafta simetrik koyu ton -->
+            <!-- Ortadan uzaklaşırken tekrar biraz koyu cyan -->
             <GradientStop Color="#00C5FF" Offset="0.80"/>
 
-            <!-- Sağ uç: tekrar açık -->
+            <!-- Sağ uç: tekrar çok açık mavi -->
             <GradientStop Color="#D0F0FF" Offset="1.0"/>
         </LinearGradientBrush>
     </Window.Resources>
+
 
     <Grid Background="White">
         <Canvas x:Name="RootCanvas" Margin="40">
