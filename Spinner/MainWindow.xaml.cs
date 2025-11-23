@@ -11,16 +11,13 @@ namespace Spinner
         // Yılan uzunluğu: toplam yolun yüzdesi
         private const double SnakeFraction = 0.40;
 
-        // Bir tam tur süresi (sn)
+        // Bir tam tur süresi (sn) – hızı buradan ayarlıyorsun
         private const double PeriodSeconds = 7.0;
-        private const double JumpCycleSeconds = 3.5;   // 1 kaybolup-gelme süresi
-        private const double JumpVisiblePortion = 0.65; // döngünün yüzde kaçı görünür
-        private double _jumpPhase;                      // 0..1 arası faz
 
-        // ✅ Çizgi her yerde eşit kalınlık
-        private const double SnakeThickness = 3.0;
-        private const double MinThickness = 4.0;   // uçlardaki kalınlık
+        // Uçlar ince, ortası kalın
+        private const double MinThickness = 2.0;   // uçlardaki kalınlık
         private const double MaxThickness = 5.0;   // ortadaki kalınlık
+
         // Path üzerindeki noktalar (eşit aralıklı sample)
         private List<Point> _points = new List<Point>();
         private List<double> _segLengths = new List<double>();
@@ -30,12 +27,6 @@ namespace Spinner
         // Animasyon state
         private double _headPos;
         private TimeSpan _lastRenderTime;
-        private double _progress; // 0..1 tur ilerlemesi
-
-        // Geometri ölçüleri (kenarlara eşit süre dağıtmak için)
-        private double _rectW, _rectH, _radius;
-        private double _topLen, _sideLen, _arcLen;
-        private double _effPerimeter;
 
         public MainWindow()
         {
@@ -60,23 +51,10 @@ namespace Spinner
             double rectHeight = h;
             double radius = 22;
 
-            _rectW = rectWidth;
-            _rectH = rectHeight;
-            _radius = radius;
-
             var rect = new Rect(0, 0, rectWidth, rectHeight);
             var rectGeom = new RectangleGeometry(rect, radius, radius);
 
             BaseBorderPath.Data = rectGeom;
-
-            // Gerçek uzunluklar
-            _topLen = Math.Max(0, _rectW - 2 * _radius);
-            _sideLen = Math.Max(0, _rectH - 2 * _radius);
-            _arcLen = Math.PI * _radius / 2.0; // her köşe çeyrek yay
-
-            // Kenarlara eşit süre -> efektif çevre
-            double avgStraight = (_topLen + _sideLen) / 2.0;
-            _effPerimeter = 4 * avgStraight + 4 * _arcLen;
 
             BuildFlattenedPath(rectGeom);
         }
@@ -89,7 +67,6 @@ namespace Spinner
             _totalLength = 0;
             _headPos = 0;
             _lastRenderTime = TimeSpan.Zero;
-            _progress = 0;
 
             // Flatten al
             var flat = geometry.GetFlattenedPathGeometry(0.2, ToleranceType.Absolute);
@@ -111,8 +88,8 @@ namespace Spinner
 
             if (rawPts.Count < 2) return;
 
-            // ✅ Eşit aralıkla resample (sol/sağ kenarlar da akıcı olsun)
-            double step = 1.5;
+            // ✅ Eşit aralıkla resample (daha yumuşak hareket için step'i 1.0 yaptım)
+            double step = 1.0;
             var sampled = Resample(rawPts, step);
 
             _points = sampled;
@@ -185,7 +162,7 @@ namespace Spinner
             double dt = (args.RenderingTime - _lastRenderTime).TotalSeconds;
             _lastRenderTime = args.RenderingTime;
 
-            // Çizgi her zaman düzgün ilerlesin (kesintisiz hareket)
+            // ✅ Çizgi sabit hızla, kesintisiz ilerlesin
             double speed = _totalLength / PeriodSeconds;
 
             _headPos += speed * dt;
@@ -197,98 +174,10 @@ namespace Spinner
             if (tailPos < 0)
                 tailPos += _totalLength;
 
-            // Önce normal geometrimizi çiziyoruz
             UpdateSnakePath(tailPos, _headPos);
 
-            // 🔥 Şimdi yumuşak görünürlük (fade in / fade out)
-            _jumpPhase += dt / JumpCycleSeconds;
-            _jumpPhase -= Math.Floor(_jumpPhase); // 0..1'de tut
-
-            double phase = _jumpPhase;
-            double opacity;
-
-            // 0.0–0.3   : tam görünür
-            // 0.3–0.5   : yavaşça kaybol (1 -> 0)
-            // 0.5–0.7   : kayıp (neredeyse görünmez)
-            // 0.7–0.9   : yavaşça ortaya çık (0 -> 1)
-            // 0.9–1.0   : tekrar tam görünür
-
-            if (phase < 0.3)
-            {
-                opacity = 1.0;
-            }
-            else if (phase < 0.5)
-            {
-                double t = (phase - 0.3) / 0.2;   // 0..1
-                opacity = 1.0 - t;               // 1 -> 0
-            }
-            else if (phase < 0.7)
-            {
-                opacity = 0; // 0 yerine, çok hafif gölge
-            }
-            else if (phase < 0.9)
-            {
-                double t = (phase - 0.7) / 0.2;   // 0..1
-                opacity = t;                     // 0 -> 1
-            }
-            else
-            {
-                opacity = 1.0;
-            }
-
-            SnakePath.Opacity = opacity;
-        }
-
-        // Kenarlara eşit süre veren mapping
-        private double MapProgressToDistance(double p)
-        {
-            double avgStraight = (_topLen + _sideLen) / 2.0;
-            double sEff = p * _effPerimeter;
-
-            // Top straight
-            if (sEff < avgStraight)
-                return (sEff / avgStraight) * _topLen;
-
-            sEff -= avgStraight;
-
-            // Arc 1
-            if (sEff < _arcLen)
-                return _topLen + sEff;
-
-            sEff -= _arcLen;
-
-            // Right straight
-            if (sEff < avgStraight)
-                return _topLen + _arcLen + (sEff / avgStraight) * _sideLen;
-
-            sEff -= avgStraight;
-
-            // Arc 2
-            if (sEff < _arcLen)
-                return _topLen + _arcLen + _sideLen + sEff;
-
-            sEff -= _arcLen;
-
-            // Bottom straight
-            if (sEff < avgStraight)
-                return _topLen + 2 * _arcLen + _sideLen + (sEff / avgStraight) * _topLen;
-
-            sEff -= avgStraight;
-
-            // Arc 3
-            if (sEff < _arcLen)
-                return 2 * _topLen + 2 * _arcLen + _sideLen + sEff;
-
-            sEff -= _arcLen;
-
-            // Left straight
-            if (sEff < avgStraight)
-                return 2 * _topLen + 3 * _arcLen + _sideLen + (sEff / avgStraight) * _sideLen;
-
-            sEff -= avgStraight;
-
-            // Arc 4
-            return 2 * _topLen + 3 * _arcLen + 2 * _sideLen + Math.Min(sEff, _arcLen);
+            // Her zaman görünür, jump/fade yok
+            SnakePath.Opacity = 1.0;
         }
 
         private void UpdateSnakePath(double tail, double head)
@@ -311,7 +200,7 @@ namespace Spinner
                 return;
             }
 
-            var geom = BuildConstantWidthGeometry(centers);
+            var geom = BuildTaperedGeometry(centers);
             SnakePath.Data = geom;
         }
 
@@ -341,67 +230,8 @@ namespace Spinner
             return pts;
         }
 
-        // ✅ Her yerde eşit kalınlıklı şerit
-        //private Geometry BuildConstantWidthGeometry(List<Point> centers)
-        //{
-        //    int n = centers.Count;
-        //    var leftPts = new List<Point>(n);
-        //    var rightPts = new List<Point>(n);
-
-        //    Vector lastDir = new Vector(1, 0);
-
-        //    for (int i = 0; i < n; i++)
-        //    {
-        //        Point p = centers[i];
-
-        //        Vector dir;
-        //        if (i == 0)
-        //            dir = centers[1] - centers[0];
-        //        else if (i == n - 1)
-        //            dir = centers[n - 1] - centers[n - 2];
-        //        else
-        //        {
-        //            Vector d1 = centers[i] - centers[i - 1];
-        //            Vector d2 = centers[i + 1] - centers[i];
-        //            dir = d1 + d2;
-        //        }
-
-        //        if (dir.LengthSquared < 1e-6)
-        //            dir = lastDir;
-        //        else
-        //            lastDir = dir;
-
-        //        dir.Normalize();
-
-        //        Vector nrm = new Vector(-dir.Y, dir.X);
-        //        double half = SnakeThickness / 2.0;
-
-        //        leftPts.Add(p + nrm * half);
-        //        rightPts.Add(p - nrm * half);
-        //    }
-
-        //    var fig = new PathFigure
-        //    {
-        //        StartPoint = leftPts[0],
-        //        IsClosed = true,
-        //        IsFilled = true
-        //    };
-
-        //    var seg = new PolyLineSegment();
-
-        //    for (int i = 1; i < leftPts.Count; i++)
-        //        seg.Points.Add(leftPts[i]);
-
-        //    for (int i = rightPts.Count - 1; i >= 0; i--)
-        //        seg.Points.Add(rightPts[i]);
-
-        //    fig.Segments.Add(seg);
-
-        //    var geom = new PathGeometry();
-        //    geom.Figures.Add(fig);
-        //    return geom;
-        //}
-        private Geometry BuildConstantWidthGeometry(List<Point> centers)
+        // Ortası kalın, uçları ince şerit
+        private Geometry BuildTaperedGeometry(List<Point> centers)
         {
             int n = centers.Count;
             var leftPts = new List<Point>(n);
@@ -434,11 +264,11 @@ namespace Spinner
 
                 Vector nrm = new Vector(-dir.Y, dir.X);
 
-                // 0..1 arasında param: 0 = kuyruk, 1 = baş
+                // 0..1: 0 = kuyruk, 1 = baş
                 double t = (double)i / (n - 1);
 
-                // Ortası kalın, uçlarda ince: 0..1..0 tepe fonksiyonu
-                double s = 1.0 - 2.0 * Math.Abs(t - 0.5); // 0..1..0
+                // 0..1..0 tepe fonksiyonu: ortada 1, uçlarda 0
+                double s = 1.0 - 2.0 * Math.Abs(t - 0.5);
                 if (s < 0) s = 0;
 
                 double thickness = MinThickness + (MaxThickness - MinThickness) * s;
