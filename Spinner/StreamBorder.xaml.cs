@@ -151,6 +151,38 @@ namespace Spinner
             set { SetValue(CenterColorProperty, value); }
         }
 
+        // 🔁 DÖNGÜ / TUR SAYISI AYARI
+        // "*" -> sonsuz tur
+        // "1","2","3","4" -> o kadar tam tur, sonra dur
+        public static readonly DependencyProperty LoopCountSettingProperty =
+            DependencyProperty.Register(
+                "LoopCountSetting",
+                typeof(string),
+                typeof(StreamBorderControl),
+                new PropertyMetadata("*", OnLoopSettingsChanged));
+
+        public string LoopCountSetting
+        {
+            get { return (string)GetValue(LoopCountSettingProperty); }
+            set { SetValue(LoopCountSettingProperty, value); }
+        }
+
+        // 🔁 Her tam turdan sonra bekleme süresi (sn)
+        // 0 -> beklemeden devam et
+        // 4 -> her tam turdan sonra 4 sn dur, sonra tekrar başlasın
+        public static readonly DependencyProperty PauseAfterFullTurnSecondsProperty =
+            DependencyProperty.Register(
+                "PauseAfterFullTurnSeconds",
+                typeof(double),
+                typeof(StreamBorderControl),
+                new PropertyMetadata(0.0, OnLoopSettingsChanged));
+
+        public double PauseAfterFullTurnSeconds
+        {
+            get { return (double)GetValue(PauseAfterFullTurnSecondsProperty); }
+            set { SetValue(PauseAfterFullTurnSecondsProperty, value); }
+        }
+
         private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             StreamBorderControl control = (StreamBorderControl)d;
@@ -175,6 +207,12 @@ namespace Spinner
             control.UpdateGradientColors();
         }
 
+        private static void OnLoopSettingsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            StreamBorderControl control = (StreamBorderControl)d;
+            control.InitializeLoopState();
+        }
+
         // ========== Internal state ==========
 
         private List<Point> _points = new List<Point>();
@@ -185,6 +223,16 @@ namespace Spinner
         private double _headPos;
         private TimeSpan _lastRenderTime;
         private bool _needsUpdate = true;
+
+        // 🔁 Tur / bekleme state
+        private int? _remainingLoops;          // null => sonsuz
+        private double _distanceSinceLastTurn; // bir turda alınan yol
+        private bool _isRunning = true;        // false => animasyon durur
+        private bool _inPause;                 // tur arası beklemede miyiz?
+        private double _pauseTimer;            // kalan bekleme süresi
+
+        // 🔁 "üst orta" hizası için canonical head pozisyonu
+        private double _canonicalHeadPos;
 
         public StreamBorderControl()
         {
@@ -205,6 +253,7 @@ namespace Spinner
             SetupGeometry();
             UpdateBorderVisual();
             UpdateGradientColors();
+            InitializeLoopState();
             CompositionTarget.Rendering += CompositionTarget_Rendering;
         }
 
@@ -230,6 +279,35 @@ namespace Spinner
             BaseBorderPath.Data = rectGeom;
 
             BuildFlattenedPath(rectGeom);
+            InitializeLoopState(); // geometri değişince tur state'ini de resetle
+        }
+
+        private void InitializeLoopState()
+        {
+            // LoopCountSetting'e göre kaç tur döneceğini ayarla
+            if (LoopCountSetting == "*")
+            {
+                _remainingLoops = null; // sonsuz
+            }
+            else if (int.TryParse(LoopCountSetting, out int count) && count > 0)
+            {
+                _remainingLoops = count; // finite
+            }
+            else
+            {
+                _remainingLoops = null; // geçersiz değer gelirse sonsuz kabul et
+            }
+
+            _distanceSinceLastTurn = 0;
+            _inPause = false;
+            _pauseTimer = 0;
+            _isRunning = true;
+
+            // Başlangıçta yılanın başını canonical pozisyona koy
+            if (_totalLength > 0)
+            {
+                _headPos = _canonicalHeadPos;
+            }
         }
 
         private void BuildFlattenedPath(Geometry geometry)
@@ -286,6 +364,50 @@ namespace Spinner
                 _totalLength += closeLen;
                 _cumLengths.Add(_totalLength);
             }
+
+            // 🔁 Canonical head pozisyonunu hesapla: yılanın ortası üst kenarın ortasında olsun
+            ComputeCanonicalHeadPos();
+        }
+
+        private void ComputeCanonicalHeadPos()
+        {
+            if (_points == null || _points.Count == 0 || _totalLength <= 0)
+            {
+                _canonicalHeadPos = 0;
+                return;
+            }
+
+            double minY = _points.Min(p => p.Y);
+            double midX = RootCanvas.ActualWidth / 2.0;
+
+            int bestIndex = 0;
+            double bestScore = double.MaxValue;
+
+            for (int i = 0; i < _points.Count; i++)
+            {
+                Point p = _points[i];
+                // Y'ye daha fazla ağırlık ver (üst kenara yapışsın)
+                double score = Math.Abs(p.Y - minY) * 2.0 + Math.Abs(p.X - midX);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestIndex = i;
+                }
+            }
+
+            // Bu noktanın path üzerindeki mesafesi
+            double distToBest = (bestIndex == 0) ? 0.0 : _cumLengths[bestIndex - 1];
+
+            double snakeLen = _totalLength * SnakeFraction;
+            // yılanın ORTASI bu noktada olsun istiyoruz:
+            // center = head - snakeLen / 2  =>  head = center + snakeLen / 2
+            double head = distToBest + snakeLen / 2.0;
+
+            // mod al, path çevresi içinde tut
+            head %= _totalLength;
+            if (head < 0) head += _totalLength;
+
+            _canonicalHeadPos = head;
         }
 
         private List<Point> Resample(List<Point> pts, double step)
@@ -322,7 +444,7 @@ namespace Spinner
 
         private void CompositionTarget_Rendering(object sender, EventArgs e)
         {
-            if (_totalLength <= 0)
+            if (_totalLength <= 0 || !_isRunning)
                 return;
 
             RenderingEventArgs args = (RenderingEventArgs)e;
@@ -335,15 +457,38 @@ namespace Spinner
             double dt = (args.RenderingTime - _lastRenderTime).TotalSeconds;
             _lastRenderTime = args.RenderingTime;
 
+            // Tur arası bekleme modundaysak, sadece zaman say
+            if (_inPause)
+            {
+                _pauseTimer -= dt;
+                if (_pauseTimer > 0)
+                    return;
+
+                // Bekleme bitti, tekrar hareket etmeye başlayabilir
+                _inPause = false;
+            }
+
             double period = PeriodSeconds;
             if (period <= 0.01)
                 period = 0.01;
 
             double speed = _totalLength / period;
+            double delta = speed * dt;
 
-            _headPos += speed * dt;
+            _headPos += delta;
             while (_headPos >= _totalLength)
                 _headPos -= _totalLength;
+
+            // Bir tam tur bitti mi?
+            _distanceSinceLastTurn += delta;
+            if (_distanceSinceLastTurn >= _totalLength)
+            {
+                _distanceSinceLastTurn -= _totalLength;
+
+                OnFullTurnCompleted();
+                if (!_isRunning) // son turda durdurdunsa artık çizmeyelim
+                    return;
+            }
 
             double snakeLen = _totalLength * SnakeFraction;
             double tailPos = _headPos - snakeLen;
@@ -352,6 +497,47 @@ namespace Spinner
 
             UpdateSnakePath(tailPos, _headPos);
             SnakePath.Opacity = 1.0;
+        }
+
+        private void OnFullTurnCompleted()
+        {
+            bool willStop = _remainingLoops.HasValue && _remainingLoops <= 1;
+            bool willPause = PauseAfterFullTurnSeconds > 0;
+
+            // Eğer bu tur sonunda duracaksak veya pause'a gireceksek,
+            // yılanın pozunu "üst orta"ya snap'leyelim
+            if (willStop || willPause)
+            {
+                if (_totalLength > 0)
+                {
+                    _headPos = _canonicalHeadPos;
+                    double snakeLen = _totalLength * SnakeFraction;
+                    double tailPos = _headPos - snakeLen;
+                    if (tailPos < 0)
+                        tailPos += _totalLength;
+
+                    // Son frame'i bu hizayla çiz
+                    UpdateSnakePath(tailPos, _headPos);
+                }
+            }
+
+            // Finite loop ise tur sayısını azalt
+            if (_remainingLoops.HasValue)
+            {
+                _remainingLoops--;
+                if (_remainingLoops <= 0)
+                {
+                    _isRunning = false; // burada duruyoruz
+                    return;
+                }
+            }
+
+            // Tur arası bekleme varsa pause'a geç
+            if (willPause)
+            {
+                _inPause = true;
+                _pauseTimer = PauseAfterFullTurnSeconds;
+            }
         }
 
         private void UpdateSnakePath(double tail, double head)

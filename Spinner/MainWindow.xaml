@@ -22,6 +22,9 @@
                                    BorderStrokeThickness="0.8"
                                    OuterColor="#00D8FF"
                                    InnerColor="#40F0FF"
-                                   CenterColor="#80FAFF"/>
+                                   CenterColor="#80FAFF"
+                                   LoopCountSetting="*"
+                                   PauseAfterFullTurnSeconds="8"
+                                   />
     </Grid>
 </Window>
